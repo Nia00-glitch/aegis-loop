@@ -1,0 +1,48 @@
+# ===================================================
+# Loop Engineering Model Registry & OmniRoute Routing
+# ===================================================
+
+gateway:
+  base_url: "http://127.0.0.1:20128/v1"
+  api_key: "sk-96ac38503125b798-733820-5d37878f"
+  timeout_seconds: 60
+
+roles:
+  planner:
+    combo: "combo/planner"
+    description: "Strongest reasoning model for problem decomposition and invariant contracts"
+    primary: "kiro/claude-sonnet-4.5"
+    fallbacks:
+      - "kiro/qwen3-coder-next"
+      - "ollama/qwen3:4b-instruct-2507-q4_K_M"
+
+  coder:
+    combo: "combo/coder"
+    description: "Strongest coding model for patch generation and syntax construction"
+    primary: "kiro/qwen3-coder-next"
+    fallbacks:
+      - "kiro/claude-sonnet-4.5"
+      - "ollama/qwen3:4b-instruct-2507-q4_K_M"
+
+  debugger:
+    combo: "combo/debugger"
+    description: "Root-cause diagnostic model for test failure attribution"
+    primary: "kiro/claude-sonnet-4.5"
+    fallbacks:
+      - "kiro/qwen3-coder-next"
+      - "ollama/qwen3:4b-instruct-2507-q4_K_M"
+
+  reviewer:
+    combo: "combo/reviewer"
+    description: "Independent critique model for diff verification and invariant adherence"
+    primary: "kiro/claude-haiku-4.5"
+    fallbacks:
+      - "kiro/claude-sonnet-4.5"
+      - "ollama/qwen3:4b-instruct-2507-q4_K_M"
+
+  fast:
+    combo: "combo/fast"
+    description: "Fast lightweight model for formatting, small edits, and token triage"
+    primary: "ollama/qwen3:4b-instruct-2507-q4_K_M"
+    fallbacks:
+      - "kiro/claude-haiku-4.5"

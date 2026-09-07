@@ -1,0 +1,12 @@
+use_default_settings: true
+
+search:
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: "market-intelligence-local-dev-secret-change-later"
+  bind_address: "[::]"
+  limiter: false
+  image_proxy: false
