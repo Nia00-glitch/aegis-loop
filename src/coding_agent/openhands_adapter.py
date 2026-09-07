@@ -35,13 +35,13 @@ class OpenHandsAdapter(BaseCodingWorker):
         self,
         model_name: str = "combo/coder",
         base_url: str = "http://127.0.0.1:20128/v1",
-        api_key: str = "sk-96ac38503125b798-733820-5d37878f",
+        api_key: Optional[str] = None,
         max_turns: int = 10,
         worker_timeout: int = 120,
     ) -> None:
         self.model_name = model_name
-        self.base_url = base_url
-        self.api_key = api_key
+        self.base_url = os.environ.get("OMNIROUTE_BASE_URL", base_url)
+        self.api_key = api_key or os.environ.get("OPENHANDS_API_KEY") or os.environ.get("OMNIROUTE_API_KEY", "omniroute-local-key")
         self.max_turns = max_turns
         self.worker_timeout = worker_timeout
         self.worker_python = self._locate_openhands_python()

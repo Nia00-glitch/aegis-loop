@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aegis-loop"
+version = "1.0.0"
+description = "Governed Autonomous Coding Agent & Closed-Loop Reliability Control Plane"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "AegisLoop Contributors", email = "arsh@loopengineering.dev"}
+]
+keywords = [
+    "ai-agents",
+    "coding-agent",
+    "self-repair",
+    "loop-engineering",
+    "autonomous-agents",
+    "invariant-protection",
+    "regression-testing",
+    "langgraph"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "pydantic>=2.7.0",
+    "pyyaml>=6.0",
+    "httpx>=0.27.0",
+    "requests>=2.31.0",
+    "pytest>=8.0.0",
+    "python-dotenv>=1.0.0"
+]
+
+[project.optional-dependencies]
+research = [
+    "crawl4ai>=0.4.0",
+    "playwright>=1.40.0",
+    "beautifulsoup4>=4.12.0",
+    "nltk>=3.8.0",
+    "networkx>=3.0"
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/Nia00-glitch/aegis-loop"
+Repository = "https://github.com/Nia00-glitch/aegis-loop.git"
+Issues = "https://github.com/Nia00-glitch/aegis-loop/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "scripts"]
+pythonpath = ["."]

@@ -4,7 +4,7 @@
 
 gateway:
   base_url: "http://127.0.0.1:20128/v1"
-  api_key: "sk-96ac38503125b798-733820-5d37878f"
+  api_key: "omniroute-local-key"
   timeout_seconds: 60
 
 roles:

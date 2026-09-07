@@ -7,8 +7,10 @@ import sys
 import time
 import urllib.request
 
-BASE_URL = "http://127.0.0.1:20128/v1"
-API_KEY = "sk-96ac38503125b798-733820-5d37878f"
+import os
+
+BASE_URL = os.environ.get("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1")
+API_KEY = os.environ.get("OMNIROUTE_API_KEY", "omniroute-local-key")
 
 
 def is_server_running(url=f"{BASE_URL}/models"):

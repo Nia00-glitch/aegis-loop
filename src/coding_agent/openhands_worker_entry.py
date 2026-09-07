@@ -25,9 +25,10 @@ def run_openhands_task(
     task_instruction: str,
     model_name: str = "combo/coder",
     base_url: str = "http://127.0.0.1:20128/v1",
-    api_key: str = "sk-96ac38503125b798-733820-5d37878f",
+    api_key: Optional[str] = None,
     max_turns: int = 10,
 ) -> dict:
+    api_key = api_key or os.environ.get("OPENHANDS_API_KEY") or os.environ.get("OMNIROUTE_API_KEY", "omniroute-local-key")
     t_start = time.time()
     events_log = []
     tool_calls = []
@@ -120,7 +121,7 @@ def main():
     parser.add_argument("--task", required=True, help="Task instruction")
     parser.add_argument("--model", default="combo/coder", help="Model name or combo")
     parser.add_argument("--base-url", default="http://127.0.0.1:20128/v1", help="Gateway URL")
-    parser.add_argument("--api-key", default="sk-96ac38503125b798-733820-5d37878f", help="API key")
+    parser.add_argument("--api-key", default=None, help="API key")
     parser.add_argument("--max-turns", type=int, default=10, help="Max turns")
 
     args = parser.parse_args()
