@@ -41,6 +41,36 @@ class CodingSessionResult:
     tests_passed: bool = False
     error: Optional[str] = None
 
+    def get_handover_summary(self) -> Dict[str, Any]:
+        """Extracts minimal, decision-relevant state for macro-iteration handover."""
+        files_read: List[str] = []
+        files_modified: List[str] = []
+        tests_run: List[str] = []
+        for turn in self.turns:
+            act = turn.action.get("action", "")
+            if act == "read_file":
+                p = turn.action.get("path")
+                if p and p not in files_read:
+                    files_read.append(p)
+            elif act in ("write_file", "patch_file"):
+                p = turn.action.get("path")
+                if p and p not in files_modified:
+                    files_modified.append(p)
+            elif act == "run_tests":
+                t = turn.action.get("test_target", "tests")
+                res_str = "Passed" if turn.result.success else "Failed"
+                tests_run.append(f"{t}: {res_str}")
+
+        outcome = "Completed" if self.success else (self.error or "Incomplete")
+        return {
+            "micro_turns_used": self.iterations,
+            "outcome": outcome,
+            "files_inspected": files_read,
+            "files_modified": files_modified,
+            "tests_run": tests_run,
+            "last_thought": self.turns[-1].thought[:200] if self.turns else None,
+        }
+
 
 class CodeActCodingAgent:
     """

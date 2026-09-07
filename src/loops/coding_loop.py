@@ -59,6 +59,11 @@ class CodingState(TypedDict):
     failure_classification_history: Optional[List[str]]
     unrepairable: Optional[bool]
     model_role: Optional[str]
+    # G5: Context Handover & Adaptive Micro-Turn Budget
+    handover_context: Optional[Dict[str, Any]]
+    total_micro_turns: Optional[int]
+    max_total_micro_turns: Optional[int]
+    adaptive_budget_enabled: Optional[bool]
 
 
 def compute_failure_signature(output: str) -> str:
@@ -165,6 +170,10 @@ def define_stage(state: CodingState) -> Dict[str, Any]:
         "test_integrity_violation": False,
         "failure_classification_history": [],
         "unrepairable": False,
+        "handover_context": None,
+        "total_micro_turns": 0,
+        "max_total_micro_turns": state.get("max_total_micro_turns", 25),
+        "adaptive_budget_enabled": state.get("adaptive_budget_enabled", True),
         "history": state.get("history", []) + ["DEFINE"],
     }
 
@@ -208,7 +217,7 @@ def plan_stage(state: CodingState) -> Dict[str, Any]:
 
 
 def implement_stage(state: CodingState) -> Dict[str, Any]:
-    """03 / IMPLEMENT: Dispatch to selected coding worker runtime (Custom CodeAct or OpenHands)."""
+    """03 / IMPLEMENT: Dispatch to selected coding worker runtime (Custom CodeAct or OpenHands) with adaptive turn-budget handover."""
     logger.info("LOOP STAGE: IMPLEMENT (Iteration %d)", state["iteration"])
     with StageTimer() as timer:
         worker_choice = state.get("worker_runtime", "custom")
@@ -222,18 +231,61 @@ def implement_stage(state: CodingState) -> Dict[str, Any]:
                 f"Fix the regression while preserving original requirements."
             )
 
+        adaptive_enabled = state.get("adaptive_budget_enabled", True)
+        prev_handover = state.get("handover_context")
+
+        # 1. Turn budget calculation
+        if adaptive_enabled:
+            max_total = state.get("max_total_micro_turns", 25)
+            used_so_far = state.get("total_micro_turns", 0)
+            remaining_budget = max(1, max_total - used_so_far)
+            current_iter = state.get("iteration", 1)
+            prev_outcome = prev_handover.get("outcome", "") if prev_handover else ""
+
+            if current_iter == 1:
+                stage_budget = min(10, remaining_budget)
+            elif "BudgetExhausted" in prev_outcome:
+                # Previous attempt ran out of turns; grant up to 15 turns from remaining pool
+                stage_budget = min(remaining_budget, 15)
+            else:
+                stage_budget = min(remaining_budget, 10)
+
+            # 2. Context Handover (Structured, non-bloated decision-relevant state)
+            if prev_handover:
+                inspected_str = ", ".join(prev_handover.get("files_inspected", [])) or "None"
+                modified_str = ", ".join(prev_handover.get("files_modified", [])) or "None"
+                tests_str = ", ".join(prev_handover.get("tests_run", [])) or "None"
+                task_desc += (
+                    f"\n\n=== PREVIOUS ITERATION CONTEXT HANDOVER ===\n"
+                    f"- Prior Micro-Turns Used: {prev_handover.get('micro_turns_used', 0)} (Remaining Pool: {remaining_budget})\n"
+                    f"- Prior Outcome: {prev_outcome}\n"
+                    f"- Files Already Inspected: {inspected_str}\n"
+                    f"- Files Modified / Attempted: {modified_str}\n"
+                    f"- Prior Tests Executed: {tests_str}\n"
+                    f"- Prior Failure Attribution: {state.get('failure_attribution', 'None')}\n"
+                    f"- Actionable Instruction: The target files above are already discovered. Avoid repeating initial file exploration; proceed directly to applying the surgical patch and verifying tests.\n"
+                    f"==========================================="
+                )
+        else:
+            # Control: static 10 turns, no handover block
+            stage_budget = 10
+
         patch_summary = ""
+        handover_data = None
+        turns_used = 0
+
         if worker_choice == "openhands":
-            logger.info("Dispatching implementation to OpenHandsAdapter...")
+            logger.info("Dispatching implementation to OpenHandsAdapter with budget %d...", stage_budget)
             try:
                 from src.coding_agent.openhands_adapter import OpenHandsAdapter
-                adapter = OpenHandsAdapter(model_name="combo/coder", max_turns=10)
+                adapter = OpenHandsAdapter(model_name="combo/coder", max_turns=stage_budget)
                 worker_res = adapter.run_task(
                     workspace_root=Path(state["workspace_root"]),
                     task_instruction=task_desc,
                     test_target=state.get("test_target"),
                 )
                 patch_summary = worker_res.patch_summary
+                turns_used = getattr(worker_res, "turns_taken", stage_budget)
                 if not worker_res.success and worker_res.error:
                     patch_summary += f" (Worker error: {worker_res.error})"
             except Exception as exc:
@@ -241,34 +293,49 @@ def implement_stage(state: CodingState) -> Dict[str, Any]:
                 coder_role = state.get("model_role") or "coder"
                 agent = CodeActCodingAgent(
                     workspace_root=Path(state["workspace_root"]),
-                    max_turns=10,
+                    max_turns=stage_budget,
                     model_role=coder_role,
                 )
                 result = agent.run_task(task_instruction=task_desc, test_target=state["test_target"])
                 patch_summary = f"[Fallback Custom] {result.patch_summary}"
+                turns_used = result.iterations
+                if hasattr(result, "get_handover_summary"):
+                    handover_data = result.get_handover_summary()
         else:
             coder_role = state.get("model_role") or "coder"
             agent = CodeActCodingAgent(
                 workspace_root=Path(state["workspace_root"]),
-                max_turns=10,
+                max_turns=stage_budget,
                 model_role=coder_role,
             )
             result = agent.run_task(task_instruction=task_desc, test_target=state["test_target"])
             patch_summary = result.patch_summary
+            turns_used = result.iterations
+            if hasattr(result, "get_handover_summary"):
+                handover_data = result.get_handover_summary()
 
+    new_total_turns = state.get("total_micro_turns", 0) + turns_used
     ledger_entry = create_ledger_entry(
         stage="IMPLEMENT",
         iteration=state["iteration"],
         status="implemented",
         patch_summary=patch_summary,
         duration_seconds=timer.elapsed,
-        extra={"worker_runtime": worker_choice},
+        extra={
+            "worker_runtime": worker_choice,
+            "stage_budget": stage_budget,
+            "turns_used": turns_used,
+            "cumulative_turns": new_total_turns,
+            "adaptive_budget_enabled": adaptive_enabled,
+        },
     )
     ledger_entries = append_ledger_entry(state.get("ledger_entries"), ledger_entry)
 
     return {
         "status": "implemented",
         "patch_summary": patch_summary,
+        "handover_context": handover_data,
+        "total_micro_turns": new_total_turns,
         "ledger_entries": ledger_entries,
         "history": state["history"] + ["IMPLEMENT"],
     }
