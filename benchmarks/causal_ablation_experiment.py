@@ -205,14 +205,18 @@ def run_single_trial(
             macro_iterations = state.get("iteration", 1)
             rollback_triggered = bool(state.get("rolled_back"))
             patch_summary = state.get("patch_summary", "")
-            repair_success = bool(state.get("test_passed"))
-            failure_detected = bool(state.get("status") in ("regression_detected", "verified_failed", "no_progress_rolled_back", "regression_rolled_back") or not state.get("baseline_passed"))
-            diagnosis_accurate = bool(state.get("failure_classification") is not None and "ERROR" in (state.get("failure_classification") or ""))
-
             # Extract ledger summary
             ledger_entries = state.get("ledger_entries") or []
             if ledger_entries:
                 ledger_summary = summarize_ledger(ledger_entries)
+
+            repair_success = bool(state.get("test_passed"))
+            failure_detected = bool(
+                state.get("status") in ("regression_detected", "verified_failed", "no_progress_rolled_back", "regression_rolled_back")
+                or not state.get("baseline_passed")
+                or (ledger_summary and ledger_summary.get("guard_events", {}).get("regression_detected"))
+            )
+            diagnosis_accurate = bool(state.get("failure_classification") is not None and "ERROR" in (state.get("failure_classification") or ""))
 
             # Estimate micro-turns (each implement stage turn count)
             agent_micro_turns = macro_iterations * 3  # typical average turns per implement stage

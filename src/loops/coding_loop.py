@@ -25,6 +25,8 @@ class CodingState(TypedDict):
     workspace_root: str
     task_instruction: str
     test_target: str
+    original_test_target: Optional[str]
+    target_swapped: Optional[bool]
     iteration: int
     max_iterations: int
     status: str
@@ -157,6 +159,8 @@ def define_stage(state: CodingState) -> Dict[str, Any]:
         "ledger_entries": ledger_entries,
         "regression_test_target": state.get("regression_test_target"),
         "regression_detected": False,
+        "original_test_target": state.get("original_test_target") or state["test_target"],
+        "target_swapped": False,
         "test_file_hash": init_test_hash,
         "test_integrity_violation": False,
         "failure_classification_history": [],
@@ -211,6 +215,12 @@ def implement_stage(state: CodingState) -> Dict[str, Any]:
         task_desc = f"{state['task_instruction']}\nPLAN:\n{state['plan']}"
         if state.get("remediation_plan"):
             task_desc += f"\nPREVIOUS FAILURE REMEDIATION:\n{state['remediation_plan']}"
+        if state.get("target_swapped") or state.get("regression_detected"):
+            task_desc += (
+                f"\nREGRESSION REMEDIATION ALERT: A regression was detected. "
+                f"Active test target has been dynamically swapped to '{state['test_target']}'. "
+                f"Fix the regression while preserving original requirements."
+            )
 
         patch_summary = ""
         if worker_choice == "openhands":
@@ -449,13 +459,19 @@ def refine_stage(state: CodingState) -> Dict[str, Any]:
 
 
 def reevaluate_stage(state: CodingState) -> Dict[str, Any]:
-    """08 / RE-EVALUATE: Convergence verification, regression protection gate, and final acceptance."""
+    """08 / RE-EVALUATE: Convergence verification, regression protection gate, remediation target swapping, and final acceptance."""
     logger.info("LOOP STAGE: RE-EVALUATE")
     with StageTimer() as timer:
+        original_target = state.get("original_test_target") or state.get("test_target")
         regression_target = state.get("regression_test_target")
-        regression_detected = False
-        regression_output = ""
+        current_active_target = state.get("test_target")
 
+        regression_detected = False
+        target_swapped = False
+        new_active_target = current_active_target
+        failure_output = ""
+
+        # 1. Evaluate regression target if defined
         if regression_target:
             logger.info("Running regression test gate against: %s", regression_target)
             reg_res = run_test_suite(
@@ -465,28 +481,74 @@ def reevaluate_stage(state: CodingState) -> Dict[str, Any]:
             if not reg_res.success:
                 logger.warning("REGRESSION DETECTED: Regression test suite failed post-mutation!")
                 regression_detected = True
-                regression_output = reg_res.output
+                failure_output = reg_res.output
+
+                # Remediation Target Swapping:
+                # If active test_target is not the regression target, swap to it
+                if current_active_target != regression_target:
+                    logger.info(
+                        "REMEDIATION TARGET SWAP: Dynamically switching active test target from '%s' to '%s'",
+                        current_active_target,
+                        regression_target,
+                    )
+                    new_active_target = regression_target
+                    target_swapped = True
+
+        # 2. If regression passed (or none defined), also verify the original visible test suite
+        # to ensure the regression repair did not cause a regression in the original visible requirements!
+        if not regression_detected and original_target and original_target != current_active_target:
+            logger.info("Verifying original visible test target after remediation: %s", original_target)
+            orig_res = run_test_suite(
+                workspace_root=Path(state["workspace_root"]),
+                test_target=original_target,
+            )
+            if not orig_res.success:
+                logger.warning("ORIGINAL TEST REGRESSION: Original test target failed after regression fix!")
+                regression_detected = True
+                failure_output = orig_res.output
+                new_active_target = original_target
+                target_swapped = True
+            else:
+                # Both regression suite and original visible suite pass! Restore original test target
+                new_active_target = original_target
 
         status_label = "regression_detected" if regression_detected else "converged_accepted"
 
+        # G3: Compute test file hash for the active target so anti-gaming protects it
+        new_hash = (
+            compute_test_file_hash(Path(state["workspace_root"]), new_active_target)
+            if new_active_target
+            else None
+        )
+
+    ledger_extra = {
+        "regression_target": regression_target,
+        "original_target": original_target,
+        "active_target": new_active_target,
+    }
     ledger_entry = create_ledger_entry(
         stage="RE-EVALUATE",
         iteration=state["iteration"],
         status=status_label,
         regression_detected=regression_detected,
+        target_swapped=target_swapped,
         duration_seconds=timer.elapsed,
-        extra={"regression_target": regression_target},
+        extra=ledger_extra,
     )
     ledger_entries = append_ledger_entry(state.get("ledger_entries"), ledger_entry)
 
     result: Dict[str, Any] = {
         "status": status_label,
         "regression_detected": regression_detected,
+        "test_target": new_active_target,
+        "test_file_hash": new_hash,
+        "original_test_target": original_target,
+        "target_swapped": target_swapped,
         "ledger_entries": ledger_entries,
         "history": state["history"] + ["RE-EVALUATE"],
     }
     if regression_detected:
-        result["test_output"] = f"REGRESSION TEST FAILURE:\n{regression_output}"
+        result["test_output"] = f"REGRESSION TEST FAILURE:\n{failure_output}"
         result["test_passed"] = False
 
     return result

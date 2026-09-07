@@ -30,6 +30,7 @@ def create_ledger_entry(
     rolled_back: Optional[bool] = None,
     test_integrity_violation: Optional[bool] = None,
     regression_detected: Optional[bool] = None,
+    target_swapped: Optional[bool] = None,
     unrepairable: Optional[bool] = None,
     patch_summary: Optional[str] = None,
     failure_attribution: Optional[str] = None,
@@ -60,6 +61,8 @@ def create_ledger_entry(
         entry["test_integrity_violation"] = test_integrity_violation
     if regression_detected is not None:
         entry["regression_detected"] = regression_detected
+    if target_swapped is not None:
+        entry["target_swapped"] = target_swapped
     if unrepairable is not None:
         entry["unrepairable"] = unrepairable
     if patch_summary is not None:
@@ -116,6 +119,7 @@ def summarize_ledger(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
         "rollback_triggered": any(e.get("rolled_back") for e in entries),
         "test_integrity_violation": any(e.get("test_integrity_violation") for e in entries),
         "regression_detected": any(e.get("regression_detected") for e in entries),
+        "target_swapped": any(e.get("target_swapped") for e in entries),
         "unrepairable_detected": any(e.get("unrepairable") for e in entries),
     }
 
