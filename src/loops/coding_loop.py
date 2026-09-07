@@ -56,6 +56,7 @@ class CodingState(TypedDict):
     # G4: Repairability Gate
     failure_classification_history: Optional[List[str]]
     unrepairable: Optional[bool]
+    model_role: Optional[str]
 
 
 def compute_failure_signature(output: str) -> str:
@@ -227,18 +228,20 @@ def implement_stage(state: CodingState) -> Dict[str, Any]:
                     patch_summary += f" (Worker error: {worker_res.error})"
             except Exception as exc:
                 logger.error("OpenHands execution exception: %s. Falling back to Custom CodeAct.", exc)
+                coder_role = state.get("model_role") or "coder"
                 agent = CodeActCodingAgent(
                     workspace_root=Path(state["workspace_root"]),
                     max_turns=10,
-                    model_role="coder",
+                    model_role=coder_role,
                 )
                 result = agent.run_task(task_instruction=task_desc, test_target=state["test_target"])
                 patch_summary = f"[Fallback Custom] {result.patch_summary}"
         else:
+            coder_role = state.get("model_role") or "coder"
             agent = CodeActCodingAgent(
                 workspace_root=Path(state["workspace_root"]),
                 max_turns=10,
-                model_role="coder",
+                model_role=coder_role,
             )
             result = agent.run_task(task_instruction=task_desc, test_target=state["test_target"])
             patch_summary = result.patch_summary
